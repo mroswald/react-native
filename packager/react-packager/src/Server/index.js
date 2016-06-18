@@ -391,7 +391,28 @@ class Server {
     const assetEvent = Activity.startEvent(`processing asset request ${assetPath[1]}`);
     this._assetServer.get(assetPath[1], urlObj.query.platform)
       .then(
-        data => res.end(data),
+        data => {
+          if (req.headers.range && assetPath[1].match(/\.mp4$/)) {
+            let [rangeStart, rangeEnd] = req.headers.range.replace(/bytes=/, '').split('-');
+            let dataStart = parseInt(rangeStart, 10);
+            let dataEnd = rangeEnd ? parseInt(rangeEnd, 10) : data.length - 1;
+            let chunksize = (dataEnd - dataStart) + 1;
+
+            res.writeHead(206, {
+              'Accept-Ranges': 'bytes',
+              'Content-Length': chunksize,
+              'Content-Range': 'bytes ' + dataStart + '-' + dataEnd + '/' + data.length,
+              'Content-Type': 'video/mp4'
+            });
+
+            let output = new Buffer(chunksize);
+            data.copy(output, 0, dataStart, dataEnd);
+
+            res.end(output);
+          } else {
+            res.end(data);
+          }
+        },
         error => {
           console.error(error.stack);
           res.writeHead('404');
